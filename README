@@ -1,0 +1,3 @@
+JSUnzip
+
+A JavaScript port of Jørgen Ibsens "tiny inflate library" and some additional code for reading a zip archive. All available under the zlib/libpng license.

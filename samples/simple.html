@@ -1,0 +1,108 @@
+<html>
+  <head>
+    <title>jsunzip test</title>
+    <script src="../source/jsunzip.js"></script>
+    <script>
+
+var zipFileName = 'cantrbry_3small.zip';
+
+var logBuffers = { };
+
+function appendToId(msg, id) {
+    if (useMSXHR()) {
+        if (!(id in logBuffers)) {
+            logBuffers[id] = "";
+        }
+        logBuffers[id] += msg;
+    } else {
+        document.getElementById(id).innerHTML += msg;
+    }
+}
+
+function flushLogs() {
+    if (useMSXHR()) {
+        for (x in logBuffers) {
+            var newdiv = document.createElement("div");
+            newdiv.innerHTML = logBuffers[x];
+            document.getElementById(x).appendChild(newdiv);
+        }
+    }
+    logBuffers = { };
+}
+
+function appendLog(msg) {
+    appendToId(msg, "list");
+}
+
+function appendContent(msg) {
+    appendToId(msg, "content");
+}
+
+function onZipReceived(data) {
+    var unzip = new JSUnzip();
+    var result = unzip.open(data);
+    if (!result.status) {
+        appendLog('Error: ' + result.error);
+    } else {
+        appendLog("<h1>Files in " + zipFileName + "</h1>");
+        for (n in unzip.files) {
+            appendLog(n + " " + (100 * unzip.files[n].compressedSize / unzip.files[n].uncompressedSize).toFixed(1) + "% of original size<br>"); 
+        }
+        appendContent("<h1>Content of files</h1>");
+        for (n in unzip.files) {
+            var result = unzip.read(n);
+            if (!result.status)
+                appendLog('Error: ' + result.error);
+            else {
+                appendContent("<h2>" + n + ":</h2><pre>" + result.data + "</pre>");
+            }
+        }
+    }
+    flushLogs();
+}
+
+function useMSXHR() {
+    return typeof ActiveXObject == "function";
+}
+
+function getBinaryFile(url, callback) {
+    var request = useMSXHR() ? new ActiveXObject("Msxml2.XmlHttp.6.0") : new XMLHttpRequest();
+    request.onreadystatechange = function() {
+        if (request.readyState == 1) {
+            if (request.overrideMimeType) {
+                request.overrideMimeType('text/plain; charset=x-user-defined');
+            }
+            request.send();
+        }
+
+        if (request.readyState == 4) {
+            if (request.status == 200) {
+                var data;
+                if (useMSXHR()) {
+                    var data = new VBArray(request.responseBody).toArray();
+                    for (var j = 0; j < data.length; ++j)
+                        data[j] = String.fromCharCode(data[j]);
+                    callback(data.join(''));
+                    request.abort();
+                } else {
+                    callback(request.responseText);
+                }
+            } else {
+                appendLog('Failed to get file ' + url + '<br>');
+                flushLogs();
+            }
+        }
+    }
+    request.open("GET", url, true);
+}
+
+function runTest() {
+    getBinaryFile(zipFileName, onZipReceived);
+}
+    </script>
+  </head>
+  <body onload="runTest()" >
+      <div id="list"></div>
+      <div id="content"></div>
+  </body>
+</html>

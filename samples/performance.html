@@ -1,0 +1,157 @@
+<html>
+  <head>
+    <title>jsunzip performance test</title>
+    <script src="../source/jsunzip.js"></script>
+    <script>
+
+var zipFileName = 'cantrbry.zip';
+
+var logBuffers = { };
+var unzipped = { };
+var unzippedLeftToLoad = 0;
+var zipData;
+var verify = true;
+
+function appendToId(msg, id) {
+    if (useMSXHR()) {
+        if (!(id in logBuffers)) {
+            logBuffers[id] = "";
+        }
+        logBuffers[id] += msg;
+    } else {
+        document.getElementById(id).innerHTML += msg;
+    }
+}
+
+function flushLogs() {
+    if (useMSXHR()) {
+        for (x in logBuffers) {
+            var newdiv = document.createElement("div");
+            newdiv.innerHTML = logBuffers[x];
+            document.getElementById(x).appendChild(newdiv);
+        }
+        logBuffers = { };
+    }
+}
+
+function appendLog(msg) {
+    appendToId(msg, "list");
+}
+
+function onZipReceived(data) {
+    zipData = data;
+    var unzip = new JSUnzip();
+    var result = unzip.open(zipData);
+    if (!result.status) {
+        appendLog('Error: ' + result.error);
+    } else {
+        appendLog('Received zipfile, loading uncompressed files for reference.<br>');
+
+        for (n in unzip.files) {
+            ++unzippedLeftToLoad;
+        }
+
+        for (n in unzip.files) {
+            var fun = function(name) { return function(d) { onUnzippedReceived(d, name); }; } 
+            getBinaryFile(zipFileName.slice(0,-4) + '/' + n, fun(n) );
+        }
+    }
+}
+
+function onUnzippedReceived(data, name) {
+    unzipped[name] = data;
+    if (--unzippedLeftToLoad == 0) {
+        runTests();
+    }
+}
+
+function runTests(data) {
+    var start = new Date();
+    var unzip = new JSUnzip();
+    var result = unzip.open(zipData);
+    if (!result.status) {
+        appendLog('Error: ' + result.error);
+    } else {
+        var totalBytes = 0;
+        for (n in unzip.files) {
+            totalBytes += unzip.files[n].uncompressedSize;
+            var result = unzip.read(n);
+            if (!result.status)
+                appendLog('Error: ' + result.error);
+            else {
+                if (verify) {
+                    // Verify that the unpacked data matches what was compressed. A little bit of special handling
+                    // requireds since XHR seems to normalize line endings of text files.
+                    var e = 0;
+                    var f = 0;
+                    for (; e < unzipped[n].length; ++e, ++f) {
+                        var expected = unzipped[n].charCodeAt& 0xff;
+                        var found = result.data.charCodeAt & 0xff;
+                        if (expected != found) {
+                            if (expected == 10 && found == 13 && (result.data.charCodeAt(f + 1) & 0xff) == 10) {
+                                ++f;
+                                continue;
+                            }
+                            appendLog("Found " + found + ", expected " + expected + "<br>");
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        var ms = new Date() - start;
+        appendLog("Uncompressed " + zipFileName + " in " + ms + "ms. " + ((totalBytes * 1000 / ms) / 1024).toFixed(1) + " kB/s<br>")
+    }
+    flushLogs();
+}
+
+function useMSXHR() {
+    return typeof ActiveXObject == "function";
+}
+
+function getBinaryFile(url, callback) {
+    var request = useMSXHR() ? new ActiveXObject("Msxml2.XmlHttp.6.0") : new XMLHttpRequest();
+    request.onreadystatechange = function() {
+        if (request.readyState == 1) {
+            if (request.overrideMimeType) {
+                request.overrideMimeType('text/plain; charset=x-user-defined');
+            }
+            request.send();
+        }
+
+        if (request.readyState == 4) {
+            if (request.status == 200) {
+                var data;
+                if (useMSXHR()) {
+                    var data = new VBArray(request.responseBody).toArray();
+                    for (var j = 0; j < data.length; ++j)
+                        data[j] = String.fromCharCode(data[j]);
+                    callback(data.join(''));
+                    request.abort();
+                } else {
+                    callback(request.responseText);
+                }
+            } else {
+                appendLog('Failed to get file ' + url + '<br>');
+                flushLogs();
+            }
+        }
+    }
+    request.open("GET", url, true);
+}
+
+function runTest(v) {
+    verify = v;
+    appendLog('Loading zipfile ' + zipFileName + '.<br>');
+    getBinaryFile(zipFileName, onZipReceived);
+}
+    </script>
+  </head>
+  <body>
+      <form>
+          <input type="button" value="unpack zip" onClick="runTest(false);"><br>
+          <input type="button" value="unpack and verify zip" onClick="runTest(true);">
+      </form>
+      <div id="list"></div>
+  </body>
+</html>
