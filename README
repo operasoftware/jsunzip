@@ -2,4 +2,4 @@ JSUnzip
 
 A JavaScript port of Jørgen Ibsens "tiny inflate library" and some additional code for reading a zip archive. All available under the zlib/libpng license.
 
-Check out the live <a href="http://operasoftware.github.com/jsunzip/samples/simple.html">simple sample</a> and the <a href="http://operasoftware.github.com/jsunzip/samples/performance.html">performance test</a>.
+Check out the live pages http://operasoftware.github.com/jsunzip/samples/simple.html and http://operasoftware.github.com/jsunzip/samples/performance.html.
