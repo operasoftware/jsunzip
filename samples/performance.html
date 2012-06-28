@@ -85,11 +85,11 @@ function runTests(data) {
                     var e = 0;
                     var f = 0;
                     for (; e < unzipped[n].length; ++e, ++f) {
-                        var expected = unzipped[n].charCodeAt& 0xff;
-                        var found = result.data.charCodeAt & 0xff;
+                        var expected = unzipped[n].charCodeAt(e) & 0xff;
+                        var found = result.data.charCodeAt(f) & 0xff;
                         if (expected != found) {
-                            if (expected == 10 && found == 13 && (result.data.charCodeAt(f + 1) & 0xff) == 10) {
-                                ++f;
+                            if (expected == 13 && found == 10) {
+                                ++e;
                                 continue;
                             }
                             appendLog("Found " + found + ", expected " + expected + "<br>");
