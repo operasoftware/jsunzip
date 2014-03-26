@@ -354,7 +354,7 @@ this.read_bits = function(d, num, base)
         d.tag = d.tag | (d.source.charCodeAt(d.sourceIndex++) & 0xff) << d.bitcount;
         d.bitcount += 8;
     }
-    val = d.tag & (0xff >> (8 - num));
+    val = d.tag & (0xffff >> (16 - num));
     d.tag >>= num;
     d.bitcount -= num;
     return val + base;
