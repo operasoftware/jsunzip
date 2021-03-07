@@ -88,8 +88,12 @@ function runTests(data) {
                         var expected = unzipped[n].charCodeAt(e) & 0xff;
                         var found = result.data.charCodeAt(f) & 0xff;
                         if (expected != found) {
-                            if (expected == 13 && found == 10) {
+                            if (expected == 13 && found == 10) { // For Windows line endings
                                 ++e;
+                                continue;
+                            }
+                            if (expected == 10 && found == 13) { // For UNIX line endings
+                                ++f;
                                 continue;
                             }
                             appendLog("Found " + found + ", expected " + expected + "<br>");
