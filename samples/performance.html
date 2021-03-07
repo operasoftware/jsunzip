@@ -75,18 +75,27 @@ function runTests(data) {
         var totalBytes = 0;
         for (n in unzip.files) {
             totalBytes += unzip.files[n].uncompressedSize;
-            var result = unzip.read(n);
+            var result = unzip.readBinary(n); // Use readBinary as this is most performant.
             if (!result.status)
                 appendLog('Error: ' + result.error);
             else {
                 if (verify) {
                     // Verify that the unpacked data matches what was compressed. A little bit of special handling
                     // requireds since XHR seems to normalize line endings of text files.
+                    // Additionally verify that the binary data read above is equivalent to the text version.
+                    var textResult = unzip.read(n);
+                    if (!textResult.status) 
+                        appendLog('Error: ' + textResult.error);
+
                     var e = 0;
                     var f = 0;
                     for (; e < unzipped[n].length; ++e, ++f) {
                         var expected = unzipped[n].charCodeAt(e) & 0xff;
-                        var found = result.data.charCodeAt(f) & 0xff;
+                        var found = result.data[f] & 0xff;
+                        var textFound = textResult.data.charCodeAt(f) & 0xff;
+                        if (found != textFound) {
+                            appendLog("Text version mismatches binary, found " + found + ", expected " + textFound + "<br>");
+                        }
                         if (expected != found) {
                             if (expected == 13 && found == 10) { // For Windows line endings
                                 ++e;

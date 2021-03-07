@@ -32,37 +32,55 @@
 var tinf;
 
 function JSUnzip() {
-
+    "use strict";
     this.getInt = function(offset, size) {
         switch (size) {
         case 4:
-            return  (this.data.charCodeAt(offset + 3) & 0xff) << 24 | 
-                    (this.data.charCodeAt(offset + 2) & 0xff) << 16 | 
-                    (this.data.charCodeAt(offset + 1) & 0xff) << 8 | 
-                    (this.data.charCodeAt(offset + 0) & 0xff);
+            return  this.data[offset + 3] << 24 | 
+                    this.data[offset + 2] << 16 | 
+                    this.data[offset + 1] << 8 | 
+                    this.data[offset + 0];
             break;
         case 2:
-            return  (this.data.charCodeAt(offset + 1) & 0xff) << 8 | 
-                    (this.data.charCodeAt(offset + 0) & 0xff);
+            return  this.data[offset + 1] << 8 | 
+                    this.data[offset + 0];
             break;
         default:
-            return this.data.charCodeAt(offset) & 0xff;
+            return this.data[offset];
             break;
         }
     };
 
     this.getDOSDate = function(dosdate, dostime) {
         var day = dosdate & 0x1f;
-        var month = ((dosdate >> 5) & 0xf) - 1;
-        var year = 1980 + ((dosdate >> 9) & 0x7f)
+        var month = ((dosdate >>> 5) & 0xf) - 1;
+        var year = 1980 + ((dosdate >>> 9) & 0x7f);
         var second = (dostime & 0x1f) * 2;
-        var minute = (dostime >> 5) & 0x3f;
-        hour = (dostime >> 11) & 0x1f;
+        var minute = (dostime >>> 5) & 0x3f;
+        var hour = (dostime >>> 11) & 0x1f;
         return new Date(year, month, day, hour, minute, second);
-    }
+    };
+
+    this.stringOf = function(array) {
+      var str = "";
+      for (var i = 0; i < array.length; ++i) {
+          str += String.fromCharCode(array[i]);
+      }
+      return str;
+    };
 
     this.open = function(data) {
-        this.data = data;
+        var i;
+        // Convert data to a Uint8Array only if it's a string.  For the fastest decode,
+        // supply a Uint8Array already. On most browsers this can be achieved in XHR with:
+        // request.responseType = "arraybuffer";
+        // and then passing the "request.response" object here (NOT request.responseTest).
+        if (typeof(data) == "string") {
+          this.data = new Uint8Array(data.length);
+          for (i = 0; i < data.length; ++i) this.data[i] = data.charCodeAt(i) & 0xff;
+        } else {
+          this.data = data;
+        }
         this.files = [];
 
         if (this.data.length < 22)
@@ -72,17 +90,17 @@ function JSUnzip() {
             --endOfCentralDirectory;
         if (endOfCentralDirectory < 0)
             return { 'status' : false, 'error' : 'Invalid data' };
-        if (this.getInt(endOfCentralDirectory + 4, 2) != 0 || this.getInt(endOfCentralDirectory + 6, 2) != 0)
+        if (this.getInt(endOfCentralDirectory + 4, 2) !== 0 || this.getInt(endOfCentralDirectory + 6, 2) !== 0)
             return { 'status' : false, 'error' : 'No multidisk support' };
 
         var entriesInThisDisk = this.getInt(endOfCentralDirectory + 8, 2);
         var centralDirectoryOffset = this.getInt(endOfCentralDirectory + 16, 4);
         var globalCommentLength = this.getInt(endOfCentralDirectory + 20, 2);
-        this.comment = this.data.slice(endOfCentralDirectory + 22, endOfCentralDirectory + 22 + globalCommentLength);
+        this.comment = this.stringOf(this.data.subarray(endOfCentralDirectory + 22, endOfCentralDirectory + 22 + globalCommentLength));
 
         var fileOffset = centralDirectoryOffset;
 
-        for (var i = 0; i < entriesInThisDisk; ++i) {
+        for (i = 0; i < entriesInThisDisk; ++i) {
             if (this.getInt(fileOffset + 0, 4) != 0x02014b50)
                 return { 'status' : false, 'error' : 'Invalid data' };
             if (this.getInt(fileOffset + 6, 2) > 20)
@@ -91,7 +109,7 @@ function JSUnzip() {
                 return { 'status' : false, 'error' : 'Encryption not implemented' };
 
             var compressionMethod = this.getInt(fileOffset + 10, 2);
-            if (compressionMethod != 0 && compressionMethod != 8)
+            if (compressionMethod !== 0 && compressionMethod !== 8)
                 return { 'status' : false, 'error' : 'Unsupported compression method' };
 
             var lastModFileTime = this.getInt(fileOffset + 12, 2);
@@ -110,8 +128,8 @@ function JSUnzip() {
 
             var relativeOffsetOfLocalHeader = this.getInt(fileOffset + 42, 4);
 
-            var fileName = this.data.slice(fileOffset + 46, fileOffset + 46 + fileNameLength);
-            var fileComment = this.data.slice(fileOffset + 46 + fileNameLength + extraFieldLength, fileOffset + 46 + fileNameLength + extraFieldLength + fileCommentLength);
+            var fileName = this.stringOf(this.data.subarray(fileOffset + 46, fileOffset + 46 + fileNameLength));
+            var fileComment = this.stringOf(this.data.subarray(fileOffset + 46 + fileNameLength + extraFieldLength, fileOffset + 46 + fileNameLength + extraFieldLength + fileCommentLength));
 
             if (this.getInt(relativeOffsetOfLocalHeader + 0, 4) != 0x04034b50)
                 return { 'status' : false, 'error' : 'Invalid data' };
@@ -131,11 +149,12 @@ function JSUnzip() {
 
             fileOffset += 46 + fileNameLength + extraFieldLength + fileCommentLength;
         }
-        return { 'status' : true }
+        return { 'status' : true };
     };     
     
-
-    this.read = function(fileName) {
+    // Reads the data and returns a Uint8Array of the results. This is the fastest method.
+    // To read the data as a string, use read()
+    this.readBinary = function(fileName) {
         var fileInfo = this.files[fileName];
         if (fileInfo) {
             if (fileInfo.compressionMethod == 8) {
@@ -143,19 +162,26 @@ function JSUnzip() {
                     tinf = new TINF();
                     tinf.init();
                 }
-                var result = tinf.uncompress(this.data, fileInfo.localFileContent);
+                var result = tinf.uncompress(this.data, fileInfo.localFileContent, fileInfo.uncompressedSize);
                 if (result.status == tinf.OK)
                     return { 'status' : true, 'data' : result.data };
                 else
                     return { 'status' : false, 'error' : result.error };
             } else {
-                return { 'status' : true, 'data' : this.data.slice(fileInfo.localFileContent, fileInfo.localFileContent + fileInfo.uncompressedSize) };
+                return { 'status' : true, 'data' : this.data.subarray(fileInfo.localFileContent, fileInfo.localFileContent + fileInfo.uncompressedSize) };
             }
         }
         return { 'status' : false, 'error' : "File '" + fileName + "' doesn't exist in zip" };
     };
-    
-};
+
+    this.read = function(fileName) {
+      var result = this.readBinary(fileName);
+      if (result.data) {
+          result.data = this.stringOf(result.data);
+      }
+      return result;
+    };
+}
 
 
 
@@ -264,7 +290,7 @@ this.build_bits_base = function(bits, base, delta, first)
       base[i] = sum;
       sum += 1 << bits[i];
    }
-}
+};
 
 /* build the fixed huffman trees */
 this.build_fixed_trees = function(lt, dt)
@@ -289,7 +315,7 @@ this.build_fixed_trees = function(lt, dt)
    dt.table[5] = 32;
 
    for (i = 0; i < 32; ++i) dt.trans[i] = i;
-}
+};
 
 /* given an array of code lengths, build a tree */
 this.build_tree = function(t, lengths, loffset, num)
@@ -317,7 +343,7 @@ this.build_tree = function(t, lengths, loffset, num)
    {
       if (lengths[loffset + i]) t.trans[offs[lengths[loffset + i]]++] = i;
    }
-}
+};
 
 /* ---------------------- *
  * -- decode functions -- *
@@ -329,19 +355,19 @@ this.getbit = function(d)
    var bit;
 
    /* check if tag is empty */
-   if (!d.bitcount--)
+   if (!(d.bitcount--))
    {
       /* load next tag */
-      d.tag = d.source.charCodeAt(d.sourceIndex++) & 0xff;
+      d.tag = d.source[d.sourceIndex++];
       d.bitcount = 7;
    }
 
    /* shift bit out of tag */
    bit = d.tag & 0x01;
-   d.tag >>= 1;
+   d.tag >>>= 1;
 
    return bit;
-}
+};
 
 /* read a num bit value from a stream and add base */
 this.read_bits = function(d, num, base)
@@ -351,26 +377,26 @@ this.read_bits = function(d, num, base)
 
     var val = 0;
     while (d.bitcount < 24) {
-        d.tag = d.tag | (d.source.charCodeAt(d.sourceIndex++) & 0xff) << d.bitcount;
+        d.tag = d.tag | d.source[d.sourceIndex++] << d.bitcount;
         d.bitcount += 8;
     }
-    val = d.tag & (0xffff >> (16 - num));
-    d.tag >>= num;
+    val = d.tag & (0xffff >>> (16 - num));
+    d.tag >>>= num;
     d.bitcount -= num;
     return val + base;
-}
+};
 
 /* given a data stream and a tree, decode a symbol */
 this.decode_symbol = function(d, t)
 {
     while (d.bitcount < 24) {
-        d.tag = d.tag | (d.source.charCodeAt(d.sourceIndex++) & 0xff) << d.bitcount;
+        d.tag = d.tag | d.source[d.sourceIndex++] << d.bitcount;
         d.bitcount += 8;
     }
     
     var sum = 0, cur = 0, len = 0;
     do {
-        cur = 2 * cur + ((d.tag & (1 << len)) >> len);
+        cur = 2 * cur + ((d.tag & (1 << len)) >>> len);
 
         ++len;
 
@@ -379,11 +405,11 @@ this.decode_symbol = function(d, t)
 
     } while (cur >= 0);
 
-    d.tag >>= len;
+    d.tag >>>= len;
     d.bitcount -= len;
 
     return t.trans[sum + cur];
-}
+};
 
 /* given a data stream, decode dynamic trees from it */
 this.decode_trees = function(d, lt, dt)
@@ -457,7 +483,7 @@ this.decode_trees = function(d, lt, dt)
    /* build dynamic trees */
    this.build_tree(lt, lengths, 0, hlit);
    this.build_tree(dt, lengths, hlit, hdist);
-}
+};
 
 /* ----------------------------- *
  * -- block inflate functions -- *
@@ -468,7 +494,7 @@ this.inflate_block_data = function(d, lt, dt)
 {
    // js optimization.
    var ddest = d.dest;
-   var ddestlength = ddest.length;
+   var ddestlength = d.destIndex;
 
    while (1)
    {
@@ -477,12 +503,13 @@ this.inflate_block_data = function(d, lt, dt)
       /* check for end of block */
       if (sym == 256)
       {
+         d.destIndex = ddestlength;
          return this.OK;
       }
 
       if (sym < 256)
       {
-         ddest[ddestlength++] = String.fromCharCode(sym);
+         ddest[ddestlength++] = sym;
       } else {
 
          var length, dist, offs;
@@ -504,7 +531,7 @@ this.inflate_block_data = function(d, lt, dt)
          }
       }
    }
-}
+};
 
 /* inflate an uncompressed block of data */
 this.inflate_uncompressed_block = function(d)
@@ -527,13 +554,13 @@ this.inflate_uncompressed_block = function(d)
 
    /* copy block */
    for (i = length; i; --i)
-       d.dest[d.dest.length] = d.source[d.sourceIndex++];
+       d.dest[d.destIndex] = d.source[d.sourceIndex++];
 
    /* make sure we start next block on a byte boundary */
    d.bitcount = 0;
 
    return this.OK;
-}
+};
 
 /* inflate a block of data compressed with fixed huffman trees */
 this.inflate_fixed_block = function(d)
@@ -550,7 +577,7 @@ this.inflate_dynamic_block = function(d)
 
    /* decode block using decoded trees */
    return this.inflate_block_data(d, d.ltree, d.dtree);
-}
+};
 
 /* ---------------------- *
  * -- public functions -- *
@@ -569,10 +596,10 @@ this.init = function()
    /* fix a special case */
    this.length_bits[28] = 0;
    this.length_base[28] = 258;
-}
+};
 
 /* inflate stream from source to dest */
-this.uncompress = function(source, offset)
+this.uncompress = function(source, offset, uncompressedSize)
 {
    var d = new this.DATA(this);
    var bfinal;
@@ -582,7 +609,8 @@ this.uncompress = function(source, offset)
    d.sourceIndex = offset;
    d.bitcount = 0;
 
-   d.dest = [];
+   d.dest = new Uint8Array(uncompressedSize);
+   d.destIndex = 0;
 
    do {
 
@@ -617,9 +645,8 @@ this.uncompress = function(source, offset)
       if (res != this.OK) return { 'status' : this.DATA_ERROR };
 
    } while (!bfinal);
-   d.dest = d.dest.join('');
 
    return { 'status' : this.OK, 'data' : d.dest };
-}
-
 };
+
+}
